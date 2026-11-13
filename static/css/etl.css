@@ -126,7 +126,67 @@ button.ghost {
 }
 .tag.ok { background: #cfe8da; color: var(--ok); }
 .tag.warn { background: #ffe6a8; color: var(--warn); }
-.actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
+.tag.err { background: #f3c6bd; color: #9b1c1c; }
+.tag.shape-wide { background: #f8cfa8; color: #8a3d0f; }
+.tag.shape-narrow { background: #cfe0f3; color: #2f4d6b; }
+.actions { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; align-items: center; }
 .kv { margin: 0.35rem 0; }
 .kv b { display: inline-block; min-width: 5.5rem; color: var(--muted); font-weight: 600; }
 .empty { color: var(--muted); padding: 1rem 0; }
+
+.panel h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 0.95rem;
+  border-top: 1px dashed var(--line);
+  padding-top: 0.8rem;
+}
+.mini { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+.bad { color: #9b1c1c; }
+.msg { margin: 0.6rem 0 0; color: var(--ok); }
+.msg.err { color: #9b1c1c; }
+
+.spec-book { margin-bottom: 1rem; }
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.grid th, .grid td {
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+.grid th { background: #f6e3cb; font-weight: 600; }
+.grid td.miss { background: #f9e2dc; color: #9b1c1c; }
+
+.shape-form label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.88rem;
+}
+.shape-form select, .shape-form input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+}
+.shape-form select:disabled, .shape-form input:disabled {
+  background: #f3e9db;
+  color: var(--muted);
+}
+
+.preview { margin: 0.4rem 0 0.6rem; }
+.preview .ph, .events .ph {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.wide-preview { border-left: 4px solid #c45c26; padding-left: 0.7rem; }
+.narrow-preview { border-left: 4px solid #2f4d6b; padding-left: 0.7rem; }
+.events { margin-top: 0.6rem; }
+.event { margin: 0.25rem 0; font-size: 0.85rem; }

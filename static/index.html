@@ -14,7 +14,28 @@
       <span class="who">{{ me }}</span>
       <button class="ghost" @click="logout">退出</button>
     </header>
-    <p class="muted">基线能力：管道列表、抽取、落库。后续题面在此叠加增量水位、清洗规则、并发争用等。</p>
+    <p class="muted">落库形态二选一并写进说明：宽表打成一行落目标，窄表按指标拆多行。须清洗通过后方可落库。</p>
+
+    <section class="panel spec-book">
+      <h2>落库方案册</h2>
+      <div v-if="!specs.length" class="empty">方案册为空</div>
+      <table v-else class="grid">
+        <thead>
+          <tr><th>管道</th><th>说明名</th><th>形态</th><th>指标清单</th><th>必填列</th><th>决定日</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in specs" :key="s.pipeline_id">
+            <td>{{ s.title }}<div class="code">{{ s.code }}</div></td>
+            <td>{{ s.spec_name || '—' }}</td>
+            <td><span class="tag" :class="shapeTag(s.shape)">{{ s.shape_name }}</span></td>
+            <td class="code">{{ s.metrics.join('、') || '—' }}</td>
+            <td class="code">{{ s.required_cols.join('、') || '—' }}</td>
+            <td class="code">{{ s.decided_on || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <div class="board">
       <section class="panel">
         <h2>管道列表</h2>
@@ -27,27 +48,120 @@
           @click="open(p.id)"
         >
           <div>
-            <div>{{ p.title }}</div>
+            <div>
+              {{ p.title }}
+              <span class="tag" :class="shapeTag(p.shape)">{{ p.shape_name }}</span>
+            </div>
             <div class="code">{{ p.code }} · {{ p.source_uri }}</div>
+            <div class="mini">
+              说明：{{ p.spec_name || '未定' }} · 将落 {{ p.planned_rows }} 行
+              <span v-if="p.unlanded_metrics.length" class="bad">
+                · 未落指标：{{ p.unlanded_metrics.join('、') }}
+              </span>
+            </div>
           </div>
           <span class="tag" :class="tagClass(p.status)">{{ p.status }}</span>
         </div>
       </section>
+
       <section class="panel">
         <h2>管道详情</h2>
-        <div v-if="!current" class="empty">点左侧一条查看抽取与落库状态</div>
+        <div v-if="!current" class="empty">点左侧一条查看形态、预览与落库</div>
         <template v-else>
           <p class="kv"><b>题名</b>{{ current.title }}</p>
           <p class="kv"><b>编码</b><span class="code">{{ current.code }}</span></p>
           <p class="kv"><b>源地址</b><span class="code">{{ current.source_uri }}</span></p>
           <p class="kv"><b>状态</b><span class="tag" :class="tagClass(current.status)">{{ current.status }}</span></p>
-          <p class="kv"><b>已抽取</b>{{ current.extracted }}</p>
-          <p class="kv"><b>已落库</b>{{ current.loaded }}</p>
+          <p class="kv"><b>已抽取</b>{{ current.extracted }}　<b>已清洗</b>{{ current.cleaned }}　<b>已落库</b>{{ current.loaded }}</p>
+          <p class="kv" v-if="current.spec">
+            <b>形态说明</b>{{ current.spec.spec_name }} · {{ current.shape_name }} · 决定日 {{ current.spec.decided_on }}
+          </p>
+
+          <h3>形态设置</h3>
+          <div class="shape-form">
+            <label>形态
+              <select v-model="form.shape" :disabled="current.status === '落库中'">
+                <option value="wide">宽表（打成一行）</option>
+                <option value="narrow">窄表（按指标多行）</option>
+              </select>
+            </label>
+            <label>说明名
+              <input v-model="form.spec_name" :disabled="current.status === '落库中'" placeholder="如：订单宽表方案" />
+            </label>
+            <label>指标清单（逗号分隔）
+              <input v-model="form.metrics" :disabled="current.status === '落库中'" placeholder="gmv,order_cnt" />
+            </label>
+            <label v-if="form.shape === 'wide'">宽表必填列（逗号分隔）
+              <input v-model="form.required_cols" :disabled="current.status === '落库中'" placeholder="缺任一列整批失败" />
+            </label>
+            <div class="actions">
+              <button class="ghost" @click="saveShape" :disabled="busy || current.status === '落库中'">保存形态</button>
+              <span class="muted">定一种写进说明，本日禁止改口；落库进行中禁止改形态。</span>
+            </div>
+          </div>
+
           <div class="actions">
             <button @click="extract" :disabled="busy">执行抽取</button>
+            <button @click="clean" :disabled="busy">执行清洗</button>
             <button class="ghost" @click="load" :disabled="busy">执行落库</button>
           </div>
-          <p v-if="msg" class="muted">{{ msg }}</p>
+          <p v-if="msg" class="msg" :class="{ err: msgErr }">{{ msg }}</p>
+
+          <template v-if="preview">
+            <h3>形态预览</h3>
+            <p class="muted" v-if="preview.type === 'none'">未定形态，请先在形态设置里选宽表或窄表。</p>
+            <div v-else-if="preview.type === 'wide'" class="preview wide-preview">
+              <p class="ph">宽表预览 · 打成 1 行写入目标（缺任一必填列整批失败）</p>
+              <table class="grid">
+                <thead><tr><th v-for="c in preview.columns" :key="c">{{ c }}</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td v-for="r in preview.rows" :key="r.metric" :class="{ miss: !r.will_land }">
+                      {{ r.will_land ? r.value : '缺失' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="preview narrow-preview">
+              <p class="ph">窄表预览 · 按指标拆 {{ preview.rows.length }} 行（允许部分指标落库）</p>
+              <table class="grid">
+                <thead><tr><th>指标</th><th>值</th><th>能否落</th></tr></thead>
+                <tbody>
+                  <tr v-for="r in preview.rows" :key="r.metric">
+                    <td class="code">{{ r.metric }}</td>
+                    <td>{{ r.will_land ? r.value : '—' }}</td>
+                    <td><span class="tag" :class="r.will_land ? 'ok' : 'err'">{{ r.will_land ? '可落' : '未落' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mini" v-if="preview.unlanded_metrics.length">
+              上次未落指标：<span class="bad">{{ preview.unlanded_metrics.join('、') }}</span>
+            </p>
+            <div v-if="preview.events.length" class="events">
+              <p class="ph">抢占与冲突痕迹</p>
+              <p v-for="e in preview.events" :key="e.id" class="event">
+                <span class="tag" :class="e.kind === '形态争用' ? 'warn' : 'err'">{{ e.kind }}</span>
+                {{ e.detail }} <span class="code">{{ e.created_at }}</span>
+              </p>
+            </div>
+          </template>
+
+          <template v-if="current.events && current.events.length">
+            <h3>形态冲突与争抢记录</h3>
+            <p v-for="e in current.events" :key="e.id" class="event">
+              <span class="tag" :class="e.kind === '形态争用' ? 'warn' : 'err'">{{ e.kind }}</span>
+              {{ e.actor || '匿名' }} · {{ e.detail }} <span class="code">{{ e.created_at }}</span>
+            </p>
+          </template>
+
+          <template v-if="current.last_run">
+            <h3>最近落库</h3>
+            <p class="kv"><b>结果</b>{{ current.last_run.result }}（{{ current.last_run.shape_name }}）</p>
+            <p class="kv"><b>落行</b>{{ current.last_run.landed_rows }} / {{ current.last_run.planned_rows }}</p>
+            <p class="kv" v-if="current.last_run.unlanded.length"><b>未落指标</b><span class="bad">{{ current.last_run.unlanded.join('、') }}</span></p>
+          </template>
         </template>
       </section>
     </div>

@@ -12,17 +12,20 @@ def test_login_and_list(authed):
     assert detail.json()["source_uri"].startswith("mock://")
 
 
-def test_extract_then_load(authed):
+def test_extract_clean_then_load(authed):
     items = authed.get("/api/pipelines").json()["items"]
-    pid = items[0]["id"]
+    pid = items[0]["id"]  # orders_daily：宽表，必填列齐全
     ex = authed.post(f"/api/pipelines/{pid}/extract")
     assert ex.status_code == 200
-    assert ex.json()["status"] == "已抽取待加载"
+    assert ex.json()["status"] == "已抽取待清洗"
     assert ex.json()["extracted"] > 0
+    cl = authed.post(f"/api/pipelines/{pid}/clean")
+    assert cl.status_code == 200
+    assert cl.json()["status"] == "已清洗待落库"
     ld = authed.post(f"/api/pipelines/{pid}/load")
     assert ld.status_code == 200
     assert ld.json()["status"] == "已落库"
-    assert ld.json()["loaded"] == ld.json()["extracted"]
+    assert ld.json()["loaded"] == 1  # 宽表打成一行
 
 
 def test_unauthed_blocked(client):
